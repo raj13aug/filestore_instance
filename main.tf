@@ -1,10 +1,15 @@
-resource "google_filestore_instance" "example" {
+resource "google_project_service" "filestore" {
+  project = var.project_id
+  service = "file.googleapis.com"
+}
+
+resource "google_filestore_instance" "filestore" {
   name     = "test-instance"
   location = "us-central1-b"
   tier     = "BASIC_HDD"
 
   file_shares {
-    name        = "example-share"
+    name        = "cloudroot_share"
     capacity_gb = 1024
 
     nfs_export_options {
@@ -19,6 +24,7 @@ resource "google_filestore_instance" "example" {
     modes        = ["MODE_IPV4"]
     connect_mode = "DIRECT_PEERING"
   }
+  depends_on = [google_project_service.filestore]
 }
 
 data "google_compute_image" "ubuntu" {
@@ -26,11 +32,23 @@ data "google_compute_image" "ubuntu" {
   project = "ubuntu-os-cloud"
 }
 
+locals {
+  filestore_ip               = google_filestore_instance.filestore.networks[0].ip_addresses
+  filestore_single_ip_string = join("", local.filestore_ip)
+}
+
+
+data "template_file" "client_userdata_script" {
+  template = file("${path.root}/start_script.tpl")
+  vars = {
+    filestore_ip = local.filestore_single_ip_string
+  }
+}
 
 resource "google_compute_instance" "vm_instance" {
-  count        = 2
+  count        = 1
   name         = "vm-instance-${count.index}"
-  machine_type = "e2-medium"
+  machine_type = "e2-micro"
 
   boot_disk {
     initialize_params {
@@ -44,12 +62,7 @@ resource "google_compute_instance" "vm_instance" {
     }
   }
 
-  metadata_startup_script = <<-EOT
-    #!/bin/bash
-    sudo apt-get update
-    sudo apt-get install -y nfs-common
-    sudo mkdir -p /mnt/filestore
-    sudo mount -o nolock ${google_filestore_instance.example.networks.0.ip_addresses[0]}:/example-share /mnt/filestore
-    echo "${google_filestore_instance.example.networks.0.ip_addresses[0]}:/example-share /mnt/filestore nfs defaults,nolock 0 0" | sudo tee -a /etc/fstab
-  EOT
+  metadata_startup_script = data.template_file.client_userdata_script.rendered
+
+  depends_on = [google_project_service.filestore, google_filestore_instance.filestore]
 }
