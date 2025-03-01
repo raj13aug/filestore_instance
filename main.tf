@@ -10,7 +10,7 @@ resource "google_filestore_instance" "filestore" {
 
   file_shares {
     name        = "cloudroot_share"
-    capacity_gb = 1024
+    capacity_gb = 100
 
     nfs_export_options {
       ip_ranges   = ["0.0.0.0/0"]
@@ -46,7 +46,7 @@ data "template_file" "client_userdata_script" {
 }
 
 resource "google_compute_instance" "vm_instance" {
-  count        = 1
+  count        = 2
   name         = "vm-instance-${count.index}"
   machine_type = "e2-micro"
 
